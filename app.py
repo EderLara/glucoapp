@@ -63,6 +63,29 @@ def init_db():
     conn.commit()
     conn.close()
 
+
+def safe_rerun():
+    """Trigger a Streamlit rerun in a production-friendly way.
+
+    Prefer `st.experimental_rerun()` when available; if it fails, change a query
+    parameter (timestamp) to force Streamlit to rerun the script. As a last
+    resort, set a session flag.
+    """
+    try:
+        st.experimental_rerun()
+        return
+    except Exception:
+        # Fallback: tweak query params to force a rerun
+        try:
+            params = st.experimental_get_query_params()
+            params['_refresh_ts'] = int(datetime.datetime.now().timestamp())
+            st.experimental_set_query_params(**params)
+            return
+        except Exception:
+            # Last resort: set a session flag; next interaction can check this flag
+            st.session_state['_needs_refresh'] = True
+            return
+
 # ==========================================
 # 2. FUNCIONES DE AUTENTICACIÓN Y DB CRUD
 # ==========================================
@@ -348,7 +371,7 @@ def admin_dashboard(user_id):
                 if st.button("Aplicar cambios (admin)", key=f"apply_admin_{user_id}"):
                     sync_history_changes(editor_df, edited, actor_id=user_id, id_to_user=id_to_user)
                     st.success("Cambios aplicados.")
-                    st.experimental_rerun()
+                    safe_rerun()
             except Exception:
                 # Fallback: seleccionar registro y editar
                 recs = records_df.to_dict('records')
@@ -381,7 +404,7 @@ def admin_dashboard(user_id):
                         # Usar wrapper admin para auditoría
                         admin_update_glucometry(user_id, sel_rec['id'], float(edited_value), edited_date.strftime("%Y-%m-%d"), edited_time.strftime("%H:%M"), target_user_id=sel_rec.get('user_id'))
                         st.success("Registro actualizado.")
-                        st.experimental_rerun()
+                        safe_rerun()
 
                     if delete:
                         with st.expander("Confirmar eliminación"):
@@ -389,7 +412,7 @@ def admin_dashboard(user_id):
                             if confirm:
                                 admin_delete_glucometry(user_id, sel_rec['id'], target_user_id=sel_rec.get('user_id'))
                                 st.success("Registro eliminado.")
-                                st.experimental_rerun()
+                                safe_rerun()
 
     conn.close()
 
@@ -419,7 +442,7 @@ def user_dashboard(user_id, username):
                       (user_id, gluco_val, gluco_date.strftime("%Y-%m-%d"), gluco_time.strftime("%H:%M")))
             conn.commit()
             st.success("¡Registro guardado exitosamente!")
-            st.experimental_rerun()
+            safe_rerun()
             
     st.divider()
     
@@ -485,7 +508,7 @@ def user_dashboard(user_id, username):
                     # Sincronizar cambios
                     sync_history_changes(editor_df, edited)
                     st.success("Cambios aplicados.")
-                    st.experimental_rerun()
+                    safe_rerun()
             except Exception:
                 # Fallback al UI clásico si data editor no está disponible
                 display_df = history_df.copy()
@@ -523,7 +546,7 @@ def user_dashboard(user_id, username):
                     if save:
                         update_glucometry(sel_rec['id'], float(edited_value), edited_date.strftime("%Y-%m-%d"), edited_time.strftime("%H:%M"))
                         st.success("Registro actualizado.")
-                        st.experimental_rerun()
+                        safe_rerun()
 
                     if delete:
                         # Usar modal si está disponible
@@ -533,13 +556,13 @@ def user_dashboard(user_id, username):
                                 if confirm:
                                     delete_glucometry(sel_rec['id'])
                                     st.success("Registro eliminado.")
-                                    st.experimental_rerun()
+                                    safe_rerun()
                         except Exception:
                             confirm = st.checkbox("Confirmar eliminación", key=f"confirm_del_{sel_rec['id']}")
                             if confirm:
                                 delete_glucometry(sel_rec['id'])
                                 st.success("Registro eliminado.")
-                                st.experimental_rerun()
+                                safe_rerun()
 
     conn.close()
 
