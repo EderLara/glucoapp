@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import datetime
 import hashlib
+import re
 
 # ==========================================
 # 1. CONFIGURACIÓN Y BASE DE DATOS
@@ -70,17 +71,38 @@ def login_user(username, password):
     return user
 
 def register_user(username, password):
+    """Registra un usuario con `username` (debe ser un correo electrónico) y `password`.
+
+    Devuelve una tupla (success: bool, message: str).
+    """
+    # Validar que el username sea un correo electrónico simple
+    email_regex = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    if not username or not re.match(email_regex, username):
+        return False, "El nombre de usuario debe ser un correo electrónico válido."
+
+    # Validar longitud mínima de contraseña
+    if not password or len(password) < 6:
+        return False, "La contraseña debe tener al menos 6 caracteres."
+
     conn = get_connection()
     c = conn.cursor()
+
+    # Verificar existencia previa para dar un mensaje claro
+    c.execute("SELECT id FROM users WHERE username=?", (username,))
+    if c.fetchone():
+        conn.close()
+        return False, "El correo ya está registrado. Elige otro."
+
     try:
         c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
                   (username, hash_password(password), 'user'))
         conn.commit()
-        success = True
+        conn.close()
+        return True, "Usuario registrado exitosamente."
     except sqlite3.IntegrityError:
-        success = False # Usuario ya existe
-    conn.close()
-    return success
+        # En caso de carrera u otra condición, manejar la duplicación
+        conn.close()
+        return False, "El correo ya está registrado. Elige otro."
 
 def update_password(user_id, new_password):
     conn = get_connection()
@@ -294,10 +316,11 @@ def main():
             new_pass = st.text_input("Nueva Contraseña", type="password", key="reg_pass")
             if st.button("Registrarse"):
                 if new_user and new_pass:
-                    if register_user(new_user, new_pass):
-                        st.success("Usuario registrado exitosamente. Por favor inicia sesión.")
+                    success, msg = register_user(new_user, new_pass)
+                    if success:
+                        st.success(msg + " Por favor inicia sesión.")
                     else:
-                        st.error("El nombre de usuario ya existe. Elige otro.")
+                        st.error(msg)
                 else:
                     st.warning("Por favor llena todos los campos.")
     
