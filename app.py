@@ -82,12 +82,50 @@ def register_user(username, password):
     conn.close()
     return success
 
+def update_password(user_id, new_password):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("UPDATE users SET password=? WHERE id=?", (hash_password(new_password), user_id))
+    conn.commit()
+    conn.close()
+
 # ==========================================
 # 3. PANELES DE CONTROL (DASHBOARDS)
 # ==========================================
 
-def admin_dashboard():
+def admin_dashboard(user_id): # <-- AHORA RECIBE EL user_id
     st.header("👑 Panel de Administración")
+    
+    # --- NUEVO: FORMULARIO PARA CAMBIAR CONTRASEÑA ---
+    with st.expander("🔐 Cambiar Contraseña de Administrador"):
+        with st.form("change_password_form", clear_on_submit=True):
+            current_password = st.text_input("Contraseña Actual", type="password")
+            new_password = st.text_input("Nueva Contraseña", type="password")
+            confirm_password = st.text_input("Confirmar Nueva Contraseña", type="password")
+            
+            submitted_pw = st.form_submit_button("Actualizar Contraseña")
+            
+            if submitted_pw:
+                # Verificar que la contraseña actual sea correcta
+                conn = get_connection()
+                c = conn.cursor()
+                c.execute("SELECT password FROM users WHERE id=?", (user_id,))
+                stored_hashed_pw = c.fetchone()[0]
+                conn.close()
+                
+                if hash_password(current_password) != stored_hashed_pw:
+                    st.error("La contraseña actual es incorrecta.")
+                elif new_password != confirm_password:
+                    st.error("Las contraseñas nuevas no coinciden.")
+                elif len(new_password) < 6:
+                    st.error("La nueva contraseña debe tener al menos 6 caracteres para ser segura.")
+                else:
+                    update_password(user_id, new_password)
+                    st.success("¡Contraseña actualizada exitosamente!")
+    
+    st.divider()
+
+    # --- RESTO DEL DASHBOARD ADMIN (Sin cambios) ---
     conn = get_connection()
     
     # Métricas generales
@@ -274,9 +312,10 @@ def main():
                 st.session_state['role'] = None
                 st.rerun()
         
-        # Enrutamiento según el rol
+         # Enrutamiento según el rol
         if st.session_state['role'] == 'admin':
-            admin_dashboard()
+            admin_dashboard(st.session_state['user_id']) 
+
         else:
             user_dashboard(st.session_state['user_id'], st.session_state['username'])
 
